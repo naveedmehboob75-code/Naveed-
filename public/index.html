@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Naveed - Shopping App</title>
+    <script src="https://js.stripe.com/v3/"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .product {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .product h3 {
+            margin-top: 0;
+        }
+        .price {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #007bff;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        #payment-form {
+            margin-top: 20px;
+        }
+        #card-element {
+            border: 1px solid #ccc;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .error {
+            color: #dc3545;
+            margin-top: 10px;
+        }
+        .success {
+            color: #28a745;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Naveed - Shopping App</h1>
+
+    <div id="products"></div>
+
+    <div id="payment-section" style="display: none;">
+        <h2>Payment</h2>
+        <div id="payment-form">
+            <div id="card-element"></div>
+            <button id="submit-payment">Pay Now</button>
+            <div id="payment-message"></div>
+        </div>
+    </div>
+
+    <script>
+        const stripe = Stripe('pk_test_your_stripe_publishable_key_here'); // Replace with your publishable key
+        const elements = stripe.elements();
+        const cardElement = elements.create('card');
+        cardElement.mount('#card-element');
+
+        let currentAmount = 0;
+
+        // Fetch and display products
+        async function loadProducts() {
+            try {
+                const response = await fetch('/api/products');
+                const products = await response.json();
+
+                const productsContainer = document.getElementById('products');
+                productsContainer.innerHTML = '';
+
+                products.forEach(product => {
+                    const productDiv = document.createElement('div');
+                    productDiv.className = 'product';
+                    productDiv.innerHTML = `
+                        <h3>${product.name}</h3>
+                        <p>${product.description}</p>
+                        <p class="price">$${(product.price / 100).toFixed(2)}</p>
+                        <button onclick="purchaseProduct(${product.price})">Buy Now</button>
+                    `;
+                    productsContainer.appendChild(productDiv);
+                });
+            } catch (error) {
+                console.error('Error loading products:', error);
+            }
+        }
+
+        // Handle purchase
+        async function purchaseProduct(amount) {
+            currentAmount = amount;
+            document.getElementById('payment-section').style.display = 'block';
+            document.getElementById('payment-message').innerHTML = '';
+        }
+
+        // Handle payment submission
+        document.getElementById('submit-payment').addEventListener('click', async (event) => {
+            event.preventDefault();
+
+            const { error, paymentMethod } = await stripe.createPaymentMethod({
+                type: 'card',
+                card: cardElement,
+            });
+
+            if (error) {
+                document.getElementById('payment-message').innerHTML = `<div class="error">${error.message}</div>`;
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/create-payment-intent', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ amount: currentAmount }),
+                });
+
+                const { clientSecret } = await response.json();
+
+                const { error: confirmError } = await stripe.confirmCardPayment(clientSecret, {
+                    payment_method: paymentMethod.id,
+                });
+
+                if (confirmError) {
+                    document.getElementById('payment-message').innerHTML = `<div class="error">${confirmError.message}</div>`;
+                } else {
+                    document.getElementById('payment-message').innerHTML = `<div class="success">Payment successful!</div>`;
+                    setTimeout(() => {
+                        document.getElementById('payment-section').style.display = 'none';
+                        cardElement.clear();
+                    }, 2000);
+                }
+            } catch (error) {
+                document.getElementById('payment-message').innerHTML = `<div class="error">An error occurred. Please try again.</div>`;
+            }
+        });
+
+        // Load products on page load
+        loadProducts();
+    </script>
+</body>
+</html>
