@@ -1,2 +1,0 @@
-# Naveed-
-Shopping satur
